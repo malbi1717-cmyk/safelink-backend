@@ -32,7 +32,7 @@ app.get('/', (req, res) => {
         <body>
             <div class="container">
                 <h2>Bulk SafeLink Generator</h2>
-                <p style="font-size: 12px; color: #666;">Masukkan beberapa URL (maksimal 5 atau lebih, 1 URL per baris):</p>
+                <p style="font-size: 12px; color: #666;">Masukkan beberapa URL (1 URL per baris, bisa langsung 5 link atau lebih):</p>
                 <textarea id="urlInput" placeholder="https://google.com&#10;https://github.com&#10;https://youtube.com"></textarea>
                 <button onclick="buatBulkShortLink()">Buat SafeLink Massal</button>
                 <div id="result"></div>
@@ -43,7 +43,6 @@ app.get('/', (req, res) => {
                     const rawInput = document.getElementById('urlInput').value;
                     const resultDiv = document.getElementById('result');
                     
-                    // Pisahkan berdasarkan baris baru dan bersihkan spasi kosong
                     const urls = rawInput.split('\\n').map(u => u.trim()).filter(u => u.length > 0);
 
                     if (urls.length === 0) {
@@ -112,7 +111,7 @@ app.get('/api/link/:code', (req, res) => {
     res.json({ originalUrl: found.originalUrl });
 });
 
-// 4. Endpoint Halaman Transisi SafeLink (Artikel + Hitungan Cepat & Mulus)
+// 4. Endpoint Halaman Transisi SafeLink (Hitungan Bilangan Bulat 3, 2, 1 tapi Cepat)
 app.get('/:code', (req, res) => {
     const shortCode = req.params.code;
     const found = databaseLinks.find(item => item.shortCode === shortCode);
@@ -151,29 +150,28 @@ app.get('/:code', (req, res) => {
 
                 <div class="safelink-widget">
                     <p style="margin: 0; color: #cbd5e1;">Mempersiapkan tautan tujuan Anda...</p>
-                    <div id="countdown">3.0</div>
+                    <div id="countdown">3</div>
                     <p class="info-text">Pengalihan kilat otomatis sedang diproses.</p>
                 </div>
             </div>
 
             <script>
-                // Menggunakan angka desimal agar perpindahan detiknya terasa sangat cepat dan smooth
-                let timeLeft = 3.0; 
+                // Mulai dari angka bulat 3
+                let timeLeft = 3; 
                 const countdownEl = document.getElementById('countdown');
                 const targetUrl = "${found.originalUrl}";
 
-                // Interval dipercepat menjadi setiap 200 milidetik (0.2 detik) agar hitungan mundur berjalan super cepat
+                // Setiap angka (3 ke 2, lalu 2 ke 1) diproses dalam waktu cepat (misal setiap 400ms / 0.4 detik)
                 const timer = setInterval(() => {
-                    timeLeft -= 0.2;
+                    timeLeft--;
                     if (timeLeft <= 0) {
-                        timeLeft = 0.0;
-                        countdownEl.innerText = timeLeft.toFixed(1);
+                        countdownEl.innerText = "0";
                         clearInterval(timer);
                         window.location.href = targetUrl;
                     } else {
-                        countdownEl.innerText = timeLeft.toFixed(1);
+                        countdownEl.innerText = timeLeft;
                     }
-                }, 200); 
+                }, 400); 
             </script>
         </body>
         </html>
