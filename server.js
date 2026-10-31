@@ -13,8 +13,10 @@ const uri = process.env.MONGO_URI;
 let cachedClient = null;
 let cachedDb = null;
 
-// Fungsi helper untuk menghubungkan database secara aman di Vercel
 async function connectToDatabase() {
+    if (!uri) {
+        throw new Error("MONGO_URI belum diatur di Environment Variables Vercel!");
+    }
     if (cachedClient && cachedDb) {
         return { client: cachedClient, db: cachedDb };
     }
@@ -74,21 +76,25 @@ app.get('/', (req, res) => {
                         return;
                     }
 
-                    const response = await fetch('/api/bulk-shorten', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ urls })
-                    });
-
-                    const data = await response.json();
-                    if (data.success) {
-                        let html = '<b>Hasil Shortlink:</b><br><br>';
-                        data.data.forEach((item, index) => {
-                            html += '<div class="result-item">' + (index + 1) + '. <a href="' + item.shortUrl + '" target="_blank">' + item.shortUrl + '</a></div>';
+                    try {
+                        const response = await fetch('/api/bulk-shorten', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ urls })
                         });
-                        resultDiv.innerHTML = html;
-                    } else {
-                        resultDiv.innerText = 'Terjadi kesalahan!';
+
+                        const data = await response.json();
+                        if (data.success) {
+                            let html = '<b>Hasil Shortlink:</b><br><br>';
+                            data.data.forEach((item, index) => {
+                                html += '<div class="result-item">' + (index + 1) + '. <a href="' + item.shortUrl + '" target="_blank">' + item.shortUrl + '</a></div>';
+                            });
+                            resultDiv.innerHTML = html;
+                        } else {
+                            resultDiv.innerText = 'Error: ' + (data.error || 'Terjadi kesalahan');
+                        }
+                    } catch (err) {
+                        resultDiv.innerText = 'Gagal menghubungi server.';
                     }
                 }
             </script>
@@ -97,7 +103,7 @@ app.get('/', (req, res) => {
     `);
 });
 
-// 2. Endpoint Bulk Shorten (Simpan ke MongoDB Atlas)
+// 2. Endpoint Bulk Shorten
 app.post('/api/bulk-shorten', async (req, res) => {
     const { urls } = req.body;
     
@@ -124,12 +130,12 @@ app.post('/api/bulk-shorten', async (req, res) => {
 
         res.json({ success: true, data: results });
     } catch (e) {
-        console.error(e);
-        res.status(500).json({ error: 'Gagal menyimpan ke database' });
+        console.error("Database Error:", e);
+        res.status(500).json({ error: 'Gagal menyimpan ke database: ' + e.message });
     }
 });
 
-// 3. Endpoint Halaman Transisi SafeLink (Cari dari MongoDB Atlas)
+// 3. Endpoint Halaman Transisi SafeLink
 app.get('/:code', async (req, res) => {
     const shortCode = req.params.code;
 
@@ -197,12 +203,12 @@ app.get('/:code', async (req, res) => {
             </html>
         `);
     } catch (e) {
-        console.error(e);
-        res.status(500).send('Terjadi kesalahan pada server.');
+        console.error("Redirect Error:", e);
+        res.status(500).send('Terjadi kesalahan pada server database.');
     }
 });
 
-// Jalankan Server (Opsional untuk Lokal)
+// Jalankan Server (Lokal)
 if (process.env.NODE_ENV !== 'production') {
     app.listen(PORT, () => {
         console.log(`Server backend berjalan di http://localhost:${PORT}`);
