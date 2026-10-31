@@ -9,30 +9,31 @@ const PORT = 3000;
 app.use(express.json());
 app.use(cors());
 
-// Koneksi ke MongoDB Atlas menggunakan Environment Variable dari Vercel
 const uri = process.env.MONGO_URI;
+let cachedClient = null;
+let cachedDb = null;
 
-const client = new MongoClient(uri, {
-    serverApi: {
-        version: ServerApiVersion.v1,
-        strict: true,
-        deprecationErrors: true,
+// Fungsi helper untuk menghubungkan database secara aman di Vercel
+async function connectToDatabase() {
+    if (cachedClient && cachedDb) {
+        return { client: cachedClient, db: cachedDb };
     }
-});
 
-let linksCollection;
+    const client = new MongoClient(uri, {
+        serverApi: {
+            version: ServerApiVersion.v1,
+            strict: true,
+            deprecationErrors: true,
+        }
+    });
 
-async function connectDB() {
-    try {
-        await client.connect();
-        const db = client.db("safelink_db");
-        linksCollection = db.collection("links");
-        console.log("Berhasil terhubung ke MongoDB Atlas!");
-    } catch (e) {
-        console.error("Gagal koneksi database:", e);
-    }
+    await client.connect();
+    const db = client.db("safelink_db");
+
+    cachedClient = client;
+    cachedDb = db;
+    return { client, db };
 }
-connectDB();
 
 // 1. Halaman Utama (Frontend Bulk Shortlink)
 app.get('/', (req, res) => {
@@ -108,6 +109,9 @@ app.post('/api/bulk-shorten', async (req, res) => {
     const results = [];
 
     try {
+        const { db } = await connectToDatabase();
+        const linksCollection = db.collection("links");
+
         for (const originalUrl of urls) {
             const shortCode = Math.random().toString(36).substring(2, 8);
             await linksCollection.insertOne({ shortCode, originalUrl, createdAt: new Date() });
@@ -120,15 +124,19 @@ app.post('/api/bulk-shorten', async (req, res) => {
 
         res.json({ success: true, data: results });
     } catch (e) {
+        console.error(e);
         res.status(500).json({ error: 'Gagal menyimpan ke database' });
     }
 });
 
-// 3. Endpoint Halaman Transisi SafeLink (Cari dari MongoDB Atlas dengan Cepat & Bulat)
+// 3. Endpoint Halaman Transisi SafeLink (Cari dari MongoDB Atlas)
 app.get('/:code', async (req, res) => {
     const shortCode = req.params.code;
 
     try {
+        const { db } = await connectToDatabase();
+        const linksCollection = db.collection("links");
+        
         const found = await linksCollection.findOne({ shortCode });
 
         if (!found) {
@@ -189,11 +197,16 @@ app.get('/:code', async (req, res) => {
             </html>
         `);
     } catch (e) {
+        console.error(e);
         res.status(500).send('Terjadi kesalahan pada server.');
     }
 });
 
-// Jalankan Server
-app.listen(PORT, () => {
-    console.log(`Server backend berjalan di http://localhost:${PORT}`);
-});
+// Jalankan Server (Opsional untuk Lokal)
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(PORT, () => {
+        console.log(`Server backend berjalan di http://localhost:${PORT}`);
+    });
+}
+
+module.exports = app;
