@@ -10,7 +10,7 @@ app.use(cors());
 // Database sementara (array)
 const databaseLinks = [];
 
-// 1. Halaman Utama (Frontend Sederhana untuk membuat link)
+// 1. Halaman Utama (Frontend Sederhana untuk Bulk Shortlink)
 app.get('/', (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -18,43 +18,52 @@ app.get('/', (req, res) => {
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SafeLink Generator - addvance.site</title>
+            <title>Bulk SafeLink Generator - addvance.site</title>
             <style>
-                body { font-family: Arial, sans-serif; text-align: center; margin-top: 100px; background: #f4f4f9; }
-                .container { background: white; padding: 30px; border-radius: 8px; display: inline-block; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); }
-                input { padding: 10px; width: 300px; margin-right: 10px; border: 1px solid #ccc; border-radius: 4px; }
-                button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+                body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background: #f4f4f9; }
+                .container { background: white; padding: 30px; border-radius: 8px; display: inline-block; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); width: 450px; max-width: 90%; }
+                textarea { padding: 10px; width: 100%; height: 120px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; resize: vertical; }
+                button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; }
                 button:hover { background: #0056b3; }
-                #result { margin-top: 20px; font-weight: bold; word-break: break-all; }
+                #result { margin-top: 20px; text-align: left; word-break: break-all; font-size: 14px; max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 4px; }
+                .result-item { margin-bottom: 8px; border-bottom: 1px solid #ddd; padding-bottom: 5px; }
             </style>
         </head>
         <body>
             <div class="container">
-                <h2>Pembuat SafeLink (addvance.site)</h2>
-                <input type="text" id="urlInput" placeholder="Masukkan URL panjang (contoh: https://google.com)">
-                <button onclick="buatShortLink()">Buat SafeLink</button>
+                <h2>Bulk SafeLink Generator</h2>
+                <p style="font-size: 12px; color: #666;">Masukkan beberapa URL (maksimal 5 atau lebih, 1 URL per baris):</p>
+                <textarea id="urlInput" placeholder="https://google.com&#10;https://github.com&#10;https://youtube.com"></textarea>
+                <button onclick="buatBulkShortLink()">Buat SafeLink Massal</button>
                 <div id="result"></div>
             </div>
 
             <script>
-                async function buatShortLink() {
-                    const originalUrl = document.getElementById('urlInput').value;
+                async function buatBulkShortLink() {
+                    const rawInput = document.getElementById('urlInput').value;
                     const resultDiv = document.getElementById('result');
                     
-                    if (!originalUrl) {
-                        alert('URL tidak boleh kosong!');
+                    // Pisahkan berdasarkan baris baru dan bersihkan spasi kosong
+                    const urls = rawInput.split('\\n').map(u => u.trim()).filter(u => u.length > 0);
+
+                    if (urls.length === 0) {
+                        alert('Masukkan minimal 1 URL!');
                         return;
                     }
 
-                    const response = await fetch('/api/shorten', {
+                    const response = await fetch('/api/bulk-shorten', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ originalUrl })
+                        body: JSON.stringify({ urls })
                     });
 
                     const data = await response.json();
                     if (data.success) {
-                        resultDiv.innerHTML = 'Link Berhasil Dibuat: <a href="' + data.shortUrl + '" target="_blank">' + data.shortUrl + '</a>';
+                        let html = '<b>Hasil Shortlink:</b><br><br>';
+                        data.data.forEach((item, index) => {
+                            html += '<div class="result-item">' + (index + 1) + '. <a href="' + item.shortUrl + '" target="_blank">' + item.shortUrl + '</a></div>';
+                        });
+                        resultDiv.innerHTML = html;
                     } else {
                         resultDiv.innerText = 'Terjadi kesalahan!';
                     }
@@ -65,24 +74,30 @@ app.get('/', (req, res) => {
     `);
 });
 
-// 2. Endpoint untuk membuat Short Link (POST)
-app.post('/api/shorten', (req, res) => {
-    const { originalUrl } = req.body;
+// 2. Endpoint untuk Membuat Banyak Short Link Sekaligus (Bulk POST)
+app.post('/api/bulk-shorten', (req, res) => {
+    const { urls } = req.body;
     
-    if (!originalUrl) {
-        return res.status(400).json({ error: 'URL asli wajib diisi!' });
+    if (!Array.isArray(urls) || urls.length === 0) {
+        return res.status(400).json({ error: 'Array URL wajib diisi!' });
     }
 
-    const shortCode = Math.random().toString(36).substring(2, 8);
-    databaseLinks.push({ shortCode, originalUrl });
+    const customDomain = 'addvance.site';
+    const results = [];
 
-    // Domain kustom Anda
-    const customDomain = 'addvance.site'; 
-    
+    urls.forEach(originalUrl => {
+        const shortCode = Math.random().toString(36).substring(2, 8);
+        databaseLinks.push({ shortCode, originalUrl });
+        results.push({
+            originalUrl,
+            shortCode,
+            shortUrl: `https://${customDomain}/${shortCode}`
+        });
+    });
+
     res.json({
         success: true,
-        shortCode: shortCode,
-        shortUrl: `https://${customDomain}/${shortCode}`
+        data: results
     });
 });
 
@@ -97,7 +112,7 @@ app.get('/api/link/:code', (req, res) => {
     res.json({ originalUrl: found.originalUrl });
 });
 
-// 4. Endpoint Halaman Transisi SafeLink (Artikel + Auto Redirect 3 Detik)
+// 4. Endpoint Halaman Transisi SafeLink (Artikel + Hitungan Cepat & Mulus)
 app.get('/:code', (req, res) => {
     const shortCode = req.params.code;
     const found = databaseLinks.find(item => item.shortCode === shortCode);
@@ -121,7 +136,6 @@ app.get('/:code', (req, res) => {
                 h1 { font-size: 22px; margin-bottom: 15px; color: #ffffff; }
                 p { color: #94a3b8; line-height: 1.6; font-size: 14px; }
                 
-                /* Widget SafeLink di bagian bawah artikel */
                 .safelink-widget { background: #1e293b; border: 1px solid #334155; padding: 20px; border-radius: 10px; text-align: center; }
                 #countdown { font-size: 32px; font-weight: bold; color: #38bdf8; margin: 10px 0; }
                 .info-text { color: #64748b; font-size: 13px; }
@@ -137,25 +151,29 @@ app.get('/:code', (req, res) => {
 
                 <div class="safelink-widget">
                     <p style="margin: 0; color: #cbd5e1;">Mempersiapkan tautan tujuan Anda...</p>
-                    <div id="countdown">3</div>
-                    <p class="info-text">Anda akan dialihkan secara otomatis tanpa perlu klik tombol.</p>
+                    <div id="countdown">3.0</div>
+                    <p class="info-text">Pengalihan kilat otomatis sedang diproses.</p>
                 </div>
             </div>
 
             <script>
-                let seconds = 2; // Hitung mundur 3 detik
+                // Menggunakan angka desimal agar perpindahan detiknya terasa sangat cepat dan smooth
+                let timeLeft = 3.0; 
                 const countdownEl = document.getElementById('countdown');
                 const targetUrl = "${found.originalUrl}";
 
+                // Interval dipercepat menjadi setiap 200 milidetik (0.2 detik) agar hitungan mundur berjalan super cepat
                 const timer = setInterval(() => {
-                    seconds--;
-                    countdownEl.innerText = seconds;
-                    if (seconds <= 0) {
+                    timeLeft -= 0.2;
+                    if (timeLeft <= 0) {
+                        timeLeft = 0.0;
+                        countdownEl.innerText = timeLeft.toFixed(1);
                         clearInterval(timer);
-                        // Langsung melempar pengguna ke URL asli
                         window.location.href = targetUrl;
+                    } else {
+                        countdownEl.innerText = timeLeft.toFixed(1);
                     }
-                }, 1000);
+                }, 200); 
             </script>
         </body>
         </html>
